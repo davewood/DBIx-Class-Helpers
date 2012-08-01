@@ -9,7 +9,7 @@ use Sub::Exporter::Progressive -setup => {
     exports => [
       qw(
          get_namespace_parts is_load_namespaces is_not_load_namespaces
-         assert_similar_namespaces
+         assert_similar_namespaces order_by_visitor
       ),
     ],
   };
@@ -44,6 +44,53 @@ sub assert_similar_namespaces {
              is_not_load_namespaces($ns1) and is_not_load_namespaces($ns2);
 }
 
+sub _order_by_visitor_HASHREF {
+   my ($hash, $callback) = @_;
+
+   # TODO: check for multiple keys
+   my ($k, $v) = %$hash;
+
+   if (my $v_ref = ref $v) {
+      if ($v_ref eq 'ARRAY' ) {
+         return {
+            $k => [ map $callback->($_), @$v ]
+         }
+      } else {
+         die 'wtf'
+      }
+   } else {
+      return {
+         $k => $callback->($v),
+      }
+   }
+}
+
+sub order_by_visitor {
+   my ($order, $callback) = @_;
+
+   if (my $top_ref = ref $order) {
+      if ($top_ref eq 'HASH') {
+         return _order_by_visitor_HASHREF($order, $callback)
+      } elsif ($top_ref eq 'ARRAY') {
+         return [
+            map {
+               if (my $ref = ref $_) {
+                  if ($ref eq 'HASH') {
+                     _order_by_visitor_HASHREF($_, $callback)
+                  } else {
+                     die 'wtf'
+                  }
+               } else {
+                  $callback->($_)
+               }
+            } @$order
+         ];
+      }
+   } else {
+      return $callback->($order)
+   }
+}
+
 1;
 
 __END__
@@ -51,6 +98,8 @@ __END__
 =pod
 
 =head1 SYNOPSIS
+
+ use DBIx::Class::Helpers::Util ':all';
 
  my ($namespace, $class) = get_namespace_parts('MyApp:Schema::Person');
  is $namespace, 'MyApp::Schema';
@@ -77,7 +126,7 @@ __END__
 A collection of various helper utilities for L<DBIx::Class> stuff.  Probably
 only useful for components.
 
-=head1 METHODS
+=head1 EXPORTS
 
 =head2 get_namespace_parts
 
